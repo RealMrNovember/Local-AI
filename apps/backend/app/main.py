@@ -7,8 +7,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
+from .agent import db as agent_db
+from .agent.manager import init_agent_manager
 from .config import get_config, resolve_path
 from .logging_config import configure_logging
+from .routers import agent as agent_router
 from .routers import chat as chat_router
 from .routers import config as config_router
 from .routers import health as health_router
@@ -34,7 +37,24 @@ def create_app() -> FastAPI:
             "CiciByte AI backend starting",
             extra={"extra_fields": {"version": __version__, "network_mode": cfg.get("network", {}).get("mode")}},
         )
+
+        agent_db.configure(resolve_path(cfg["paths"]["agent_db"]))
+        agent_cfg = cfg.get("agent", {})
+        manager = init_agent_manager(
+            max_step_retries=agent_cfg.get("max_step_retries", 2),
+            retry_backoff_base_s=agent_cfg.get("retry_backoff_base_s", 0.3),
+            max_steps_per_run=agent_cfg.get("max_steps_per_run", 50),
+        )
+        recovered = await manager.recover_interrupted_runs()
+        if recovered:
+            logger.warning(
+                "Recovered interrupted agent runs from a previous process",
+                extra={"extra_fields": {"count": recovered}},
+            )
+
         yield
+
+        await manager.stop_all()
         logger.info("CiciByte AI backend stopped")
 
     app = FastAPI(
@@ -58,6 +78,8 @@ def create_app() -> FastAPI:
     app.include_router(models_router.router)
     app.include_router(network_router.router)
     app.include_router(chat_router.router)
+    app.include_router(agent_router.router)
+    app.include_router(agent_router.ws_router)
 
     return app
 

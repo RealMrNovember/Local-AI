@@ -21,7 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: "dashboard", label: "Dashboard", implemented: true },
   { key: "chat", label: "Chat", implemented: true },
   { key: "models", label: "Models", implemented: true },
-  { key: "agents", label: "Agents", implemented: false },
+  { key: "agents", label: "Agents", implemented: true },
   { key: "tools", label: "Tools", implemented: false },
   { key: "projects", label: "Projects", implemented: false },
   { key: "workspace", label: "Workspace", implemented: false },

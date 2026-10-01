@@ -1,18 +1,19 @@
 import { useEffect, useState } from "react";
 import { api, type NetworkMode } from "./api/client";
+import { KillSwitch } from "./components/KillSwitch";
 import { NetworkModeControl } from "./components/NetworkModeControl";
 import { Sidebar, type NavKey } from "./components/Sidebar";
 import { StatusBadge } from "./components/StatusBadge";
+import { Agents } from "./pages/Agents";
 import { Chat } from "./pages/Chat";
 import { ComingSoon } from "./pages/ComingSoon";
 import { Dashboard } from "./pages/Dashboard";
 import { Models } from "./pages/Models";
 
 const PHASE_BY_PANEL: Record<
-  Exclude<NavKey, "dashboard" | "models" | "chat">,
+  Exclude<NavKey, "dashboard" | "models" | "chat" | "agents">,
   string
 > = {
-  agents: "Phase 3 (Agent Core)",
   tools: "Phase 4 (Tool Engine)",
   projects: "Phase 7 (Memory) / Phase 8 (UI Completion)",
   workspace: "Phase 4 (Tool Engine)",
@@ -44,6 +45,7 @@ export default function App() {
         <header className="h-12 border-b border-cici-border flex items-center justify-between px-4">
           <span className="text-xs text-cici-muted capitalize">{active}</span>
           <div className="flex items-center gap-4">
+            <KillSwitch />
             <NetworkModeControl onChange={(m) => setNetworkMode(m)} />
             <StatusBadge networkMode={networkMode} connected={connected} />
           </div>
@@ -52,9 +54,13 @@ export default function App() {
           {active === "dashboard" && <Dashboard />}
           {active === "chat" && <Chat />}
           {active === "models" && <Models networkMode={networkMode} />}
-          {active !== "dashboard" && active !== "models" && active !== "chat" && (
-            <ComingSoon title={capitalize(active)} phase={PHASE_BY_PANEL[active]} />
-          )}
+          {active === "agents" && <Agents />}
+          {active !== "dashboard" &&
+            active !== "models" &&
+            active !== "chat" &&
+            active !== "agents" && (
+              <ComingSoon title={capitalize(active)} phase={PHASE_BY_PANEL[active]} />
+            )}
         </main>
       </div>
     </div>

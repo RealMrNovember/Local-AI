@@ -28,6 +28,8 @@ paths:
   projects: projects
   models_dir: models
   models_registry: config/models.yaml
+  data: data
+  agent_db: data/agent.db
 
 logging:
   level: INFO
@@ -36,3 +38,8 @@ logging:
 
 autonomy:
   default_mode: SAFE   # SAFE | AUTO | FULL
+
+agent:
+  max_step_retries: 2        # bounded RetryPolicy (ARCHITECTURE.md Section 6)
+  retry_backoff_base_s: 0.3
+  max_steps_per_run: 50      # safety limit, independent of retries

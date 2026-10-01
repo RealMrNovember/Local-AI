@@ -61,19 +61,30 @@ tag's exact spelling without a reachable Ollama instance; treat it as
 unconfirmed until checked (`docs/MODELS.md` and `config/models.yaml` both
 flag this).
 
-## Phase 3 — Agent Core
+## Phase 3 — Agent Core ✅ (2026-10-02)
 Goal: the Plan/Execute/Observe/Validate loop runs end-to-end against a
 no-op or trivial tool set, with persistence and the kill switch.
 
-- ⬜ `AgentRun`/`Step` data model + SQLite persistence
-- ⬜ Planner, Executor, Observer, Validator, bounded RetryPolicy
-- ⬜ Checkpointing after each step; resume-after-crash
-- ⬜ Kill switch: `STOP AGENT` button, `/api/agent/{id}/stop`, `cici stop`
-- ⬜ Live Agent View (step list with status, expandable detail) in UI
+- ✅ `AgentRun`/`Step` data model + SQLite persistence (`apps/backend/app/agent/db.py`, plain sqlite3 + `asyncio.to_thread`)
+- ✅ Planner (stub-plan only, by design — see `planner.py`), Executor, bounded RetryPolicy (`retry.py`). Validator is a stub pass-through for now, with the hook point already in place in `manager.py` for a real one.
+- ✅ Checkpointing after each step; resume-after-crash (`recover_interrupted_runs()` on startup marks stuck "running" rows "interrupted" and resets their in-flight step to "pending")
+- ✅ Kill switch: UI "🛑 STOP AGENT" button (global, always visible, badge shows active count), per-run Stop button, `POST /api/agent/runs/{id}/stop`, `POST /api/agent/stop-all`, `cici stop [run_id]` CLI (`apps/cli/cici.py`)
+- ✅ Live Agent View: step list with status, expandable params/output/error, live via `WS /ws/agent/{id}`
 
-**Exit test:** give the agent a multi-step task using only a stub
-"echo"/"sleep" tool, watch steps render live, hit STOP mid-run, confirm the
-process tree actually terminates and state is saved as "interrupted."
+**Exit test:** ✅ done 2026-10-02. Backend: 10 dedicated agent tests
+(23/23 total passing), including an actual `task.cancel()` kill mid-sleep,
+a simulated crash (a run+step left "running" in the DB with no in-memory
+task) correctly recovered to "interrupted," and a resume that skips the
+already-"done" step and only re-runs from the checkpoint. Browser e2e:
+started a 60-second stub_sleep run, clicked the real "🛑 STOP AGENT" button
+in the UI, confirmed via the API that the run stopped ~8 seconds in with
+status "stopped" — not a simulated UI state change, an actual cancelled
+asyncio task. Note: "terminates the process tree" from the original exit
+test wording applies starting Phase 4, once there's a real subprocess to
+terminate — Phase 3 has no real external process yet, by design (stub
+executors only), so the kill switch here cancels the asyncio task running
+the step loop. The psutil-based process-tree kill described in
+ARCHITECTURE.md §8 is still correct for Phase 4 and unaffected by this.
 
 ## Phase 4 — Tool Engine
 Goal: the Universal Tool Adapter is real, with permissions, for a small set

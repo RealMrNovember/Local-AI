@@ -49,10 +49,62 @@ export interface ModelRegistryResponse {
   ollama_reachable: boolean;
 }
 
+export type AgentRunStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "stopped"
+  | "interrupted"
+  | "discarded";
+
+export type AgentStepStatus = "pending" | "running" | "done" | "failed" | "stopped";
+
+export interface AgentRun {
+  id: string;
+  goal: string;
+  status: AgentRunStatus;
+  created_at: string;
+  updated_at: string;
+  error: string | null;
+  is_active?: boolean;
+}
+
+export interface AgentStep {
+  id: string;
+  run_id: string;
+  step_index: number;
+  type: string;
+  params: Record<string, unknown>;
+  status: AgentStepStatus;
+  output: Record<string, unknown> | null;
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface AgentRunDetail {
+  run: AgentRun;
+  steps: AgentStep[];
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`);
   if (!res.ok) {
     throw new Error(`${path} -> HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail ?? `${path} -> HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
@@ -76,6 +128,16 @@ export const api = {
   networkMode: () => get<{ mode: NetworkMode; valid_modes: NetworkMode[] }>("/api/network/mode"),
   setNetworkMode: (mode: NetworkMode) => put<{ mode: NetworkMode }>("/api/network/mode", { mode }),
   chatSocketUrl: () => `${WS_BASE}/ws/chat`,
+
+  createAgentRun: (goal: string, steps?: { type: string; params: Record<string, unknown> }[]) =>
+    post<AgentRunDetail>("/api/agent/runs", { goal, steps }),
+  listAgentRuns: () => get<{ runs: AgentRun[] }>("/api/agent/runs"),
+  getAgentRun: (runId: string) => get<AgentRunDetail>(`/api/agent/runs/${runId}`),
+  stopAgentRun: (runId: string) => post<{ stopped: boolean }>(`/api/agent/runs/${runId}/stop`),
+  resumeAgentRun: (runId: string) => post<AgentRunDetail>(`/api/agent/runs/${runId}/resume`),
+  discardAgentRun: (runId: string) => post<AgentRunDetail>(`/api/agent/runs/${runId}/discard`),
+  stopAllAgents: () => post<{ stopped_count: number }>("/api/agent/stop-all"),
+  agentSocketUrl: (runId: string) => `${WS_BASE}/ws/agent/${runId}`,
   pullModel: async (ollamaTag: string, onEvent: (e: Record<string, unknown>) => void): Promise<void> => {
     const res = await fetch(`${API_BASE}/api/models/pull`, {
       method: "POST",
