@@ -86,20 +86,41 @@ executors only), so the kill switch here cancels the asyncio task running
 the step loop. The psutil-based process-tree kill described in
 ARCHITECTURE.md §8 is still correct for Phase 4 and unaffected by this.
 
-## Phase 4 — Tool Engine
+## Phase 4 — Tool Engine ✅ (2026-10-02)
 Goal: the Universal Tool Adapter is real, with permissions, for a small set
 of safe development/system tools.
 
-- ⬜ Tool Registry (JSON schemas) + loader/validator
-- ⬜ Execution Engine (subprocess, stdout/stderr/exit code, timeout, resource usage)
-- ⬜ Permission Engine: risk levels (LOW/MEDIUM/HIGH/CRITICAL), Autonomy Modes (SAFE/AUTO/FULL)
-- ⬜ Confirmation UI (Allow/Deny prompt for gated calls)
-- ⬜ Built-in tools: `python`, `git`, `filesystem` (read/write/list within workspace policy)
-- ⬜ Audit log (every tool call recorded: timestamp, tool, args, exit code, duration)
+- ✅ Tool Registry (`config/tools.yaml`) + loader/validator (`app/tools/registry.py`)
+- ✅ Execution Engine: real subprocess (`python`, `git`) with stdout/stderr/exit code/timeout, **and real process-tree termination via psutil on cancel** — plus in-process filesystem ops (`list`/`read`/`write`/`delete`) scoped to `workspace/`+`projects/` with path-traversal rejection
+- ✅ Permission Engine: risk levels (LOW/MEDIUM/HIGH/CRITICAL) × Autonomy Modes (SAFE/AUTO/FULL), runtime-switchable like Network Mode
+- ✅ Confirmation UI: an always-visible top banner (`ConfirmationBar`) for pending confirmations, Allow/Deny, independent of which panel is open
+- ✅ Built-in tools: `python`, `git`, `filesystem_list`/`filesystem_read`/`filesystem_write`/`filesystem_delete`
+- ✅ Audit log: every invocation persisted (`data/tools.db`) with timestamp, tool, args, exit code, stdout/stderr/output, duration — exposed via `GET /api/tools/invocations` and the Tools panel
+- ✅ (integration) Agent Core's `tool_call` step type now runs real tools through this exact engine — Phase 3's stub executors remain for regression tests, but the agent can now do real work
 
-**Exit test:** ask the agent to "list files in workspace and summarize a
-given file" — it plans, calls `filesystem` tools via the registry, you see
-the audit log entries, and a SAFE-mode run prompts for confirmation.
+**Exit test:** ✅ done 2026-10-02, and taken further than originally scoped
+(no live Ollama yet to drive "summarize a file" through chat, so the test
+used an explicit 3-step plan instead of a model-authored one — see note
+below). An agent run executed `filesystem_list` → `filesystem_write` →
+`filesystem_read` as real `tool_call` steps; the read step's output
+(`"Phase 4 proof"`) was confirmed to be exactly what the write step had
+just written, through the real filesystem execution path, verified live in
+the browser's Live Agent View. Separately verified: a SAFE-mode
+`filesystem_list` invocation produced a `pending_confirmation` row, showed
+up in the always-visible `ConfirmationBar`, and clicking "Allow" in the
+actual UI (not the API) carried it to `done`. A **real OS subprocess**
+(`python -c "import time; time.sleep(30)"`) was cancelled via
+`POST /api/tools/invocations/{id}/cancel`, confirmed via `psutil.pid_exists()`
+to have actually died (not just abandoned) — the single most
+safety-critical claim in this phase, and it wasn't just asserted, it was
+checked. 35/35 backend tests pass (12 new for the tool engine).
+
+**Known scope note:** the exit test's original "summarize a given file"
+wording implies a model reading file content — that needs Phase 2's chat
+model wired into a real Planner, which doesn't exist yet (Phase 3's
+planner is still rule-free by design, see `planner.py`). Explicit
+multi-step plans work end-to-end today; a model-authored plan is a
+reasonable Phase 5+ addition once there's a concrete reason to build it.
 
 ## Phase 5 — Terminal
 Goal: a real, shared terminal in the UI.

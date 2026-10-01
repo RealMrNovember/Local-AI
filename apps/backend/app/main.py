@@ -9,14 +9,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import __version__
 from .agent import db as agent_db
 from .agent.manager import init_agent_manager
-from .config import get_config, resolve_path
+from .config import REPO_ROOT, get_config, resolve_path
 from .logging_config import configure_logging
 from .routers import agent as agent_router
+from .routers import autonomy as autonomy_router
 from .routers import chat as chat_router
 from .routers import config as config_router
 from .routers import health as health_router
 from .routers import models as models_router
 from .routers import network as network_router
+from .routers import tools as tools_router
+from .tools import db as tools_db
+from .tools.manager import init_tool_manager
 
 logger = logging.getLogger("cicibyte.backend")
 
@@ -52,9 +56,19 @@ def create_app() -> FastAPI:
                 extra={"extra_fields": {"count": recovered}},
             )
 
+        tools_db.configure(resolve_path(cfg["paths"]["tools_db"]))
+        exec_cfg = cfg.get("execution", {})
+        tool_manager = init_tool_manager(
+            repo_root=REPO_ROOT,
+            workspace_dir=resolve_path(cfg["paths"]["workspace"]),
+            filesystem_allowed_roots=exec_cfg.get("filesystem_allowed_roots", ["workspace", "projects"]),
+            subprocess_timeout_s=exec_cfg.get("subprocess_timeout_s", 60),
+        )
+
         yield
 
         await manager.stop_all()
+        await tool_manager.cancel_all()
         logger.info("CiciByte AI backend stopped")
 
     app = FastAPI(
@@ -80,6 +94,8 @@ def create_app() -> FastAPI:
     app.include_router(chat_router.router)
     app.include_router(agent_router.router)
     app.include_router(agent_router.ws_router)
+    app.include_router(tools_router.router)
+    app.include_router(autonomy_router.router)
 
     return app
 

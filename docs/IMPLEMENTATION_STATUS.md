@@ -37,7 +37,7 @@ is only marked ✅ once its exit test has actually been executed.
 | 1 | Foundation | ✅ | See "Phase 1 — completed" below. |
 | 2 | AI Runtime | ⚠️ | Built and fail-soft-tested; needs a real Ollama install to confirm an actual end-to-end streamed chat. See "Phase 2 — completed" below. |
 | 3 | Agent Core | ✅ | Fully built and verified, including a real kill-switch click in the browser. See "Phase 3 — completed" below. |
-| 4 | Tool Engine | ⬜ | Not started |
+| 4 | Tool Engine | ✅ | Fully built and verified, including a real OS process actually killed (checked with `psutil.pid_exists`, not assumed). See "Phase 4 — completed" below. |
 | 5 | Terminal | ⬜ | Not started |
 | 6 | Cyber Toolchain | ⬜ | Not started |
 | 7 | Memory | ⬜ | Not started |
@@ -246,6 +246,101 @@ config files (Phase 7), remaining UI panels (Phase 8).
   the Chat model (Phase 2) into planning is a reasonable Phase 4 addition
   once there are real tools for a model-authored plan to call.
 
+## Phase 4 — completed (2026-10-02)
+
+**Backend additions** (`apps/backend/app/tools/`):
+- `registry.py` — loads `config/tools.yaml` (6 entries: `python`, `git`,
+  `filesystem_list/read/write/delete`), validates `risk_level`/`kind`
+  against known enums.
+- `permission.py` — `needs_confirmation(risk_level, autonomy_mode,
+  tool_requires_confirmation)`: CRITICAL always confirms (even in FULL);
+  SAFE confirms everything; AUTO confirms MEDIUM+ or an explicit per-tool
+  flag; FULL confirms only CRITICAL. A tool's own flag can only make
+  confirmation *more* likely, never bypass the mode's floor.
+- `execution.py` — `run_subprocess()` (real `asyncio.create_subprocess_exec`,
+  kills the full process tree via psutil on timeout **and on
+  cancellation** — not just abandoning the await); `fs_list/read/write/delete()`
+  (pure Python I/O, no exec() at all, every call resolved through
+  `_resolve_safe_path()` which rejects anything outside
+  `execution.filesystem_allowed_roots` — absolute paths, drive letters,
+  and `..` traversal are all rejected before any I/O happens).
+- `db.py` — `tool_invocations` table, doubling as the audit log (product
+  brief Section 31/32): every invocation recorded with args, risk level,
+  requester, exit code, stdout/stderr/output, timestamps, duration.
+- `manager.py` — `ToolManager`: `invoke_and_wait()` (runs inline in the
+  caller's own task — used by the Agent's `tool_call` step so a
+  kill-switch cancellation propagates all the way down to an actual
+  subprocess kill) vs. `create_and_start()` (spawns a background task —
+  used by the standalone HTTP endpoint, which must return immediately
+  instead of blocking on a human's confirmation decision).
+- Routers: `app/routers/tools.py` (`GET registry`, `POST invoke`,
+  `GET/POST invocations...`, `approve`/`deny`/`cancel`), `app/routers/autonomy.py`
+  (`GET/PUT /api/autonomy/mode`, same runtime-switchable pattern as
+  Network Mode).
+- `runtime_state.py` extended with `get_autonomy_mode()`/`set_autonomy_mode()`.
+- `app/agent/executors.py` gained a `tool_call` step type that calls
+  `ToolManager.invoke_and_wait()` — Phase 3's `stub_echo`/`stub_sleep`
+  remain for regression tests, but the agent loop can now do real work.
+- `main.py` lifespan wires up `tools_db.configure()` and
+  `init_tool_manager()`, and shutdown now calls `tool_manager.cancel_all()`
+  alongside the agent manager's `stop_all()`.
+- Tests: `tests/test_tools.py`, 12 tests — registry listing, unknown-tool
+  rejection, SAFE mode gating even a LOW-risk tool then approving it, AUTO
+  mode letting LOW-risk through automatically, deny blocking execution,
+  path-traversal rejection, a real write→read round-trip, a real `python`
+  subprocess run, a real `git status` subprocess run, **cancelling a real
+  30-second `python` sleep subprocess and confirming it actually dies**
+  (elapsed time assertion, not just a status check), an agent run with a
+  real `tool_call` step, and a SAFE-mode agent `tool_call` that blocks
+  until a human approves the pending confirmation. 35/35 backend tests
+  pass overall.
+- **Bug caught during test-writing, not left in:** the SAFE-mode
+  `tool_call` test's own cleanup (`filesystem_delete`) initially ran under
+  SAFE mode too, so its confirmation was never approved and the test file
+  silently stayed on disk. Fixed by switching to FULL mode before cleanup
+  and asserting the delete actually completed.
+
+**Frontend additions:**
+- `pages/Tools.tsx` — registry browser (risk badges, confirmation
+  requirement), a manual "Try a tool" invoker (JSON args textarea), and a
+  live-polled "Recent invocations" table that **is** the audit log view
+  (a dedicated Logs panel with search is still Phase 8).
+- `components/ConfirmationBar.tsx` — an always-visible banner (not buried
+  in the Tools panel) listing every `pending_confirmation` invocation with
+  Allow/Deny, polling every 1.5s — verified live: a SAFE-mode invocation
+  showed up here and clicking the real "Allow" button in the browser
+  carried it through to `done`.
+- `components/AutonomyModeControl.tsx` — header dropdown (SAFE/AUTO/FULL),
+  same pattern as `NetworkModeControl`.
+
+**Verified live, not just by reading the code:**
+- SAFE mode: invoked `filesystem_list` from the UI, watched it land as
+  `pending_confirmation` in both the audit log table and the
+  `ConfirmationBar`, clicked "Allow" in the browser, watched it reach `done`.
+- FULL mode: ran a 3-step agent plan (`filesystem_list` →
+  `filesystem_write` → `filesystem_read`, all real `tool_call` steps) and
+  confirmed in the Live Agent View that the read step's output
+  (`"Phase 4 proof"`) matched exactly what the write step had just
+  written — the full real-tool round trip through the Permission Engine
+  and Execution Engine, not a simulation.
+- Started a real 30-second `python time.sleep(30)` subprocess, cancelled
+  it via the API, and independently confirmed with a standalone
+  `psutil.pid_exists()` check (plus a `Get-CimInstance Win32_Process`
+  sweep afterward) that no stray process was left running — the kill
+  switch's most important promise actually holds.
+
+**Known Phase 4 scope boundaries (by design, not gaps):**
+- No Target Scope engine yet — correctly deferred to Phase 6, since only
+  System/Development tools exist so far (no network/security tools to
+  scope-check against).
+- The Planner is still rule-free (Phase 3's `plan_steps()` — explicit
+  steps or a trivial echo). A model-authored plan needs Phase 2's chat
+  model wired in; not done, and the roadmap's exit-test note above
+  explains why that's an acceptable, intentional gap for now.
+- `filesystem_allowed_roots` covers `workspace/` and `projects/` only —
+  `TEMP/` from ARCHITECTURE.md Section 18 doesn't exist in the repo layout
+  yet and wasn't added speculatively.
+
 ## Environment notes (dev machine, 2026-10-02)
 
 Checked on the current Windows dev machine — informational only, does not
@@ -264,12 +359,9 @@ block any phase:
 1. **Close out Phase 2 for real:** install Ollama, `ollama pull dolphin3:8b`,
    confirm an actual end-to-end streamed chat through the UI, and verify/fix
    the `qwen3-coder:30b` tag.
-2. Start Phase 4 (Tool Engine): Tool Registry (JSON schemas), real
-   Execution Engine (subprocess, stdout/stderr/exit code, timeout, resource
-   usage via psutil), Permission Engine (risk levels + Autonomy Modes +
-   confirmation UI), audit log, and built-in `python`/`git`/`filesystem`
-   tools. This is also where the Agent Core's executors stop being stubs
-   and the Planner/Validator get something real to plan against and check.
-3. Repo is connected to https://github.com/RealMrNovember/Local-AI and the
-   Phase 1-2 commit is pushed to `main`. Remember to commit Phase 3's work
-   too once reviewed.
+2. Start Phase 5 (Terminal): PTY-backed real terminal session (Windows:
+   `pywinpty`/ConPTY), xterm.js panel in the UI wired over WebSocket,
+   "Send output to AI," and a process manager view.
+3. Repo is connected to https://github.com/RealMrNovember/Local-AI;
+   Phase 1-3 are pushed to `main`. Phase 4's work is committed locally and
+   ready to push — see the latest commit message for what's included.

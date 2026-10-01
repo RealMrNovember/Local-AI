@@ -1,0 +1,69 @@
+# CiciByte AI — Tool Registry (ARCHITECTURE.md Section 7)
+#
+# Every tool the Agent/UI can call is declared here, not hardcoded into the
+# agent loop (the "Universal Tool Adapter" rule). Phase 4 ships only
+# System/Development tools; Network/Security/Forensics adapters are
+# Phase 6, gated additionally by the Target Scope engine that doesn't
+# exist yet — don't add them here before that lands.
+#
+# risk_level: LOW | MEDIUM | HIGH | CRITICAL (product brief Section 44)
+# requires_confirmation: a per-tool hint the Permission Engine ORs with its
+#   own autonomy-mode-based decision — it can only ever make confirmation
+#   MORE likely, never bypass it (see app/tools/permission.py).
+# kind: "subprocess" (runs a real executable) | "filesystem" (in-process,
+#   scoped to execution.filesystem_allowed_roots — no real exec() at all)
+
+tools:
+  - name: python
+    category: development
+    kind: subprocess
+    executable: python   # resolved to sys.executable at call time for portability
+    risk_level: MEDIUM
+    requires_confirmation: false
+    enabled: true
+    description: "Run a Python script (args.code) or file (args.script_path)"
+
+  - name: git
+    category: development
+    kind: subprocess
+    executable: git
+    risk_level: LOW
+    requires_confirmation: false
+    enabled: true
+    description: "Run a git subcommand (args.args: list[str]) inside the workspace"
+
+  - name: filesystem_list
+    category: system
+    kind: filesystem
+    action: list
+    risk_level: LOW
+    requires_confirmation: false
+    enabled: true
+    description: "List a directory under workspace/ or projects/"
+
+  - name: filesystem_read
+    category: system
+    kind: filesystem
+    action: read
+    risk_level: LOW
+    requires_confirmation: false
+    enabled: true
+    description: "Read a text file under workspace/ or projects/"
+
+  - name: filesystem_write
+    category: system
+    kind: filesystem
+    action: write
+    risk_level: MEDIUM
+    requires_confirmation: true
+    enabled: true
+    description: "Create or overwrite a text file under workspace/ or projects/"
+
+  - name: filesystem_delete
+    category: system
+    kind: filesystem
+    action: delete
+    risk_level: HIGH
+    requires_confirmation: true
+    enabled: true
+    description: "Delete a file or directory under workspace/ or projects/"

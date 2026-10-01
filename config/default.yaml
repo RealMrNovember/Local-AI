@@ -30,6 +30,8 @@ paths:
   models_registry: config/models.yaml
   data: data
   agent_db: data/agent.db
+  tools_db: data/tools.db
+  tools_registry: config/tools.yaml
 
 logging:
   level: INFO
@@ -43,3 +45,7 @@ agent:
   max_step_retries: 2        # bounded RetryPolicy (ARCHITECTURE.md Section 6)
   retry_backoff_base_s: 0.3
   max_steps_per_run: 50      # safety limit, independent of retries
+
+execution:
+  subprocess_timeout_s: 60       # default; a tool/step can override per-call
+  filesystem_allowed_roots: [workspace, projects]   # ARCHITECTURE.md Section 18 (TEMP/ not in the repo layout yet)

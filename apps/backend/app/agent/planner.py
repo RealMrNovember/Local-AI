@@ -1,19 +1,18 @@
 """Planner — turns a goal (+ optional explicit steps) into an ordered step
 list (ARCHITECTURE.md Section 6).
 
-Phase 3 scope: this validates the Plan/Execute/Observe/Validate state
-machine itself, not intelligent planning. Only two stub step types exist
-(`stub_echo`, `stub_sleep`) — Phase 4 replaces these with real Tool
-Registry calls and gives the Planner an actual model-backed decomposition
-step. Until then, a caller either supplies the exact steps to run (how the
-roadmap's Phase 3 exit test exercises the kill switch and persistence) or
-gets a single trivial echo step back.
+Still rule-free by design: a caller supplies the exact steps to run (now
+including real `tool_call` steps as of Phase 4 — see app/tools/), or gets
+a single trivial `stub_echo` step back. A model-backed decomposition step
+(goal text -> a real plan) is a reasonable Phase 4+/5 addition once there
+are enough real tools for a model-authored plan to meaningfully choose
+between — intentionally not built yet.
 """
 from __future__ import annotations
 
 from typing import Any
 
-KNOWN_STEP_TYPES = {"stub_echo", "stub_sleep"}
+KNOWN_STEP_TYPES = {"stub_echo", "stub_sleep", "tool_call"}
 
 
 def plan_steps(goal: str, explicit_steps: list[dict[str, Any]] | None) -> list[dict[str, Any]]:

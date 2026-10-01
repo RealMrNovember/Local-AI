@@ -88,6 +88,50 @@ export interface AgentRunDetail {
   steps: AgentStep[];
 }
 
+export type AutonomyMode = "SAFE" | "AUTO" | "FULL";
+export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export interface ToolDefinition {
+  name: string;
+  category: string;
+  kind: "subprocess" | "filesystem";
+  risk_level: RiskLevel;
+  requires_confirmation: boolean;
+  enabled: boolean;
+  description: string;
+  executable: string | null;
+  action: string | null;
+}
+
+export type InvocationStatus =
+  | "pending_confirmation"
+  | "approved"
+  | "denied"
+  | "running"
+  | "done"
+  | "failed"
+  | "cancelled";
+
+export interface ToolInvocation {
+  id: string;
+  tool_name: string;
+  args: Record<string, unknown>;
+  risk_level: RiskLevel;
+  status: InvocationStatus;
+  requested_by: "user" | "agent";
+  run_id: string | null;
+  step_id: string | null;
+  exit_code: number | null;
+  stdout: string | null;
+  stderr: string | null;
+  output: unknown;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_s: number | null;
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`);
   if (!res.ok) {
@@ -138,6 +182,19 @@ export const api = {
   discardAgentRun: (runId: string) => post<AgentRunDetail>(`/api/agent/runs/${runId}/discard`),
   stopAllAgents: () => post<{ stopped_count: number }>("/api/agent/stop-all"),
   agentSocketUrl: (runId: string) => `${WS_BASE}/ws/agent/${runId}`,
+
+  autonomyMode: () => get<{ mode: AutonomyMode; valid_modes: AutonomyMode[] }>("/api/autonomy/mode"),
+  setAutonomyMode: (mode: AutonomyMode) => put<{ mode: AutonomyMode }>("/api/autonomy/mode", { mode }),
+
+  toolRegistry: () => get<{ tools: ToolDefinition[] }>("/api/tools/registry"),
+  invokeTool: (tool: string, args: Record<string, unknown>) =>
+    post<ToolInvocation>("/api/tools/invoke", { tool, args }),
+  listInvocations: (limit = 100) => get<{ invocations: ToolInvocation[] }>(`/api/tools/invocations?limit=${limit}`),
+  listPendingConfirmations: () => get<{ pending: ToolInvocation[] }>("/api/tools/invocations/pending"),
+  getInvocation: (id: string) => get<ToolInvocation>(`/api/tools/invocations/${id}`),
+  approveInvocation: (id: string) => post<ToolInvocation>(`/api/tools/invocations/${id}/approve`),
+  denyInvocation: (id: string) => post<ToolInvocation>(`/api/tools/invocations/${id}/deny`),
+  cancelInvocation: (id: string) => post<{ cancelled: boolean }>(`/api/tools/invocations/${id}/cancel`),
   pullModel: async (ollamaTag: string, onEvent: (e: Record<string, unknown>) => void): Promise<void> => {
     const res = await fetch(`${API_BASE}/api/models/pull`, {
       method: "POST",
