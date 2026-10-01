@@ -18,7 +18,9 @@ from .routers import config as config_router
 from .routers import health as health_router
 from .routers import models as models_router
 from .routers import network as network_router
+from .routers import terminal as terminal_router
 from .routers import tools as tools_router
+from .terminal.manager import init_terminal_manager
 from .tools import db as tools_db
 from .tools.manager import init_tool_manager
 
@@ -65,10 +67,13 @@ def create_app() -> FastAPI:
             subprocess_timeout_s=exec_cfg.get("subprocess_timeout_s", 60),
         )
 
+        terminal_manager = init_terminal_manager()
+
         yield
 
         await manager.stop_all()
         await tool_manager.cancel_all()
+        await terminal_manager.close_all()
         logger.info("CiciByte AI backend stopped")
 
     app = FastAPI(
@@ -96,6 +101,8 @@ def create_app() -> FastAPI:
     app.include_router(agent_router.ws_router)
     app.include_router(tools_router.router)
     app.include_router(autonomy_router.router)
+    app.include_router(terminal_router.router)
+    app.include_router(terminal_router.ws_router)
 
     return app
 

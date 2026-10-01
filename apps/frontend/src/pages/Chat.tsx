@@ -6,7 +6,13 @@ interface DisplayMessage {
   content: string;
 }
 
-export function Chat() {
+export function Chat({
+  seedText,
+  onSeedConsumed,
+}: {
+  seedText?: string | null;
+  onSeedConsumed?: () => void;
+}) {
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -27,6 +33,14 @@ export function Chat() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
+
+  useEffect(() => {
+    if (seedText) {
+      setInput((prev) => (prev ? prev : `Here is recent terminal output:\n\n${seedText}\n\nWhat happened here?`));
+      onSeedConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedText]);
 
   const send = () => {
     if (!input.trim() || streaming) return;

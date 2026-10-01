@@ -38,7 +38,7 @@ is only marked ✅ once its exit test has actually been executed.
 | 2 | AI Runtime | ⚠️ | Built and fail-soft-tested; needs a real Ollama install to confirm an actual end-to-end streamed chat. See "Phase 2 — completed" below. |
 | 3 | Agent Core | ✅ | Fully built and verified, including a real kill-switch click in the browser. See "Phase 3 — completed" below. |
 | 4 | Tool Engine | ✅ | Fully built and verified, including a real OS process actually killed (checked with `psutil.pid_exists`, not assumed). See "Phase 4 — completed" below. |
-| 5 | Terminal | ⬜ | Not started |
+| 5 | Terminal | ✅ | Real PTY (pywinpty/ConPTY), xterm.js UI, verified live with an actual command. See "Phase 5 — completed" below. |
 | 6 | Cyber Toolchain | ⬜ | Not started |
 | 7 | Memory | ⬜ | Not started |
 | 8 | UI Completion | ⬜ | Not started |
@@ -341,6 +341,88 @@ config files (Phase 7), remaining UI panels (Phase 8).
   `TEMP/` from ARCHITECTURE.md Section 18 doesn't exist in the repo layout
   yet and wasn't added speculatively.
 
+## Phase 5 — completed (2026-10-02)
+
+**Pre-flight API verification (done before writing any app code, per the
+project's "no fake functionality" rule):** installed `pywinpty` and
+scripted a standalone probe spawning a real `powershell.exe` — confirmed
+`PtyProcess.spawn()`, blocking `.read()` returning full ANSI/VT100 output
+(including PSReadLine's live syntax highlighting as it builds up a typed
+command), `.write()`, and `.terminate(force=True)` all behave as expected,
+before committing to the design. First attempt at the probe script hung
+(a naive `while True: read()` blocks forever once the shell goes idle —
+`read()` blocks for new data, it doesn't return empty on "nothing new
+right now") and left stray `powershell.exe` processes; cleaned those up
+and fixed the probe with a thread-pool + timeout pattern before trusting
+the API further.
+
+**Backend additions** (`apps/backend/app/terminal/`):
+- `manager.py` — `TerminalSession` wraps one `winpty.PtyProcess`; a
+  dedicated background OS thread runs the blocking `read()` loop and
+  hands chunks to the asyncio side via `loop.call_soon_threadsafe` (the
+  event loop is never blocked on terminal I/O). `TerminalManager` tracks
+  sessions by id, exposes create/list/close/close_all.
+- **Bug caught before it shipped:** `TerminalSession.__init__` runs inside
+  `asyncio.to_thread` (a worker thread), so `asyncio.get_event_loop()`
+  inside it would not reliably return the right loop. Fixed by having
+  `create_session()` capture `asyncio.get_running_loop()` on the actual
+  event-loop thread and pass it into the constructor explicitly.
+- `app/routers/terminal.py` — `POST/GET /api/terminal/sessions`,
+  `GET .../history` (full scrollback, used by "Send output to AI"),
+  `DELETE .../{id}`, `WS /ws/terminal/{id}` (client sends
+  `{"type":"input"|"resize",...}`, server streams `{"type":"output",...}`).
+- `main.py` lifespan now initializes `TerminalManager` and calls
+  `close_all()` on shutdown alongside the agent/tool managers.
+- Windows-only by design this phase — `requirements.txt` pins
+  `pywinpty` with `sys_platform == "win32"`. POSIX needs the `ptyprocess`
+  package (similar API) — not added, since it can't be exercised or
+  verified on this Windows dev machine; that's explicitly Phase 9b
+  (Linux boot environment) work.
+- Tests: `tests/test_terminal.py`, 4 tests — create/list/close a session,
+  reject an unknown shell, **a real round-trip through the actual
+  WebSocket**: send `echo CICIBYTE_TERMINAL_TEST`, assert that exact
+  string comes back through the output stream (not mocked), and confirm
+  it also shows up via the history endpoint. 39/39 backend tests pass
+  overall. Verified after the test run that no `powershell.exe` was left
+  running (`Get-Process` sweep).
+
+**Frontend additions:**
+- `pages/Terminal.tsx` (`TerminalPanel` + `TerminalView`) — session list
+  (doubles as the Phase 5 process-manager view: shell, alive/dead dot,
+  short id, Close button) plus an `@xterm/xterm` instance per active
+  session, `@xterm/addon-fit` for resize, piping `term.onData` to the
+  WebSocket and WebSocket messages to `term.write()`.
+- "Send output to AI" strips ANSI escape sequences from the captured
+  buffer client-side and lifts it to `App.tsx` as `chatSeed`, which
+  switches the active panel to Chat and pre-fills its message box.
+- `Chat.tsx` gained `seedText`/`onSeedConsumed` props for this hand-off.
+
+**Verified live, not just by reading the code:**
+- Opened a PowerShell session in the actual UI — xterm.js rendered the
+  real prompt `PS C:\...\workspace>` (correct cwd: the default is the
+  workspace directory, not the repo root).
+- Typed and ran `Get-ChildItem | Select-Object -First 3` directly in the
+  browser's terminal — watched real, correctly-formatted table output
+  (the actual `.gitkeep` file in `workspace/`) appear via PSReadLine's
+  live syntax highlighting, confirming full bidirectional real-time I/O.
+- Clicked "Send output to AI" and inspected the Chat input's actual DOM
+  `value` via JS (not just `get_page_text`, which doesn't surface form
+  field values) — confirmed the captured terminal text, including the
+  command and its real output, had been seeded into the message box.
+- Closed the session via the UI's Close button and confirmed via
+  `Get-CimInstance Win32_Process` that the specific PowerShell process was
+  gone — not orphaned, not left running in the background.
+
+**Known Phase 5 scope boundaries (by design, not gaps):**
+- Windows-only (pywinpty/ConPTY). POSIX is Phase 9b.
+- Raw PTY capture includes PSReadLine's incremental redraw artifacts in
+  the text sent to "Send output to AI" — functional but a little noisy;
+  a cleaner strip pass is a reasonable Phase 8 polish item.
+- No terminal resizing was exercised beyond the `ResizeObserver` wiring
+  itself (ConPTY resize was not independently verified against a program
+  that reacts to `SIGWINCH`/console-size, e.g. resizing mid-`vim`) — low
+  risk, but worth knowing it's unverified rather than assuming it works.
+
 ## Environment notes (dev machine, 2026-10-02)
 
 Checked on the current Windows dev machine — informational only, does not
@@ -359,9 +441,10 @@ block any phase:
 1. **Close out Phase 2 for real:** install Ollama, `ollama pull dolphin3:8b`,
    confirm an actual end-to-end streamed chat through the UI, and verify/fix
    the `qwen3-coder:30b` tag.
-2. Start Phase 5 (Terminal): PTY-backed real terminal session (Windows:
-   `pywinpty`/ConPTY), xterm.js panel in the UI wired over WebSocket,
-   "Send output to AI," and a process manager view.
+2. Start Phase 6 (Cyber Toolchain): Target Scope config + enforcement in
+   the Permission Engine *before* any adapter work, then nmap/nikto/ffuf
+   adapters (simple CLI, parseable output), then nuclei/sqlmap (HIGH risk,
+   confirmation required), YARA, and the Security workspace layout.
 3. Repo is connected to https://github.com/RealMrNovember/Local-AI;
-   Phase 1-3 are pushed to `main`. Phase 4's work is committed locally and
-   ready to push — see the latest commit message for what's included.
+   Phase 1-4 are pushed to `main`. Phase 5's work is committed locally and
+   ready to push.

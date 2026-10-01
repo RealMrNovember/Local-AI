@@ -132,6 +132,25 @@ export interface ToolInvocation {
   duration_s: number | null;
 }
 
+export interface TerminalSessionInfo {
+  id: string;
+  shell: string;
+  created_at: string;
+  alive: boolean;
+  pid: number | null;
+  cols: number;
+  rows: number;
+}
+
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { method: "DELETE" });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail ?? `${path} -> HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`);
   if (!res.ok) {
@@ -195,6 +214,13 @@ export const api = {
   approveInvocation: (id: string) => post<ToolInvocation>(`/api/tools/invocations/${id}/approve`),
   denyInvocation: (id: string) => post<ToolInvocation>(`/api/tools/invocations/${id}/deny`),
   cancelInvocation: (id: string) => post<{ cancelled: boolean }>(`/api/tools/invocations/${id}/cancel`),
+
+  createTerminalSession: (shell: "powershell" | "cmd" = "powershell") =>
+    post<TerminalSessionInfo>("/api/terminal/sessions", { shell }),
+  listTerminalSessions: () => get<{ sessions: TerminalSessionInfo[] }>("/api/terminal/sessions"),
+  closeTerminalSession: (id: string) => del<{ closed: boolean }>(`/api/terminal/sessions/${id}`),
+  getTerminalHistory: (id: string) => get<{ history: string }>(`/api/terminal/sessions/${id}/history`),
+  terminalSocketUrl: (id: string) => `${WS_BASE}/ws/terminal/${id}`,
   pullModel: async (ollamaTag: string, onEvent: (e: Record<string, unknown>) => void): Promise<void> => {
     const res = await fetch(`${API_BASE}/api/models/pull`, {
       method: "POST",

@@ -26,7 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: "projects", label: "Projects", implemented: false },
   { key: "workspace", label: "Workspace", implemented: false },
   { key: "security", label: "Security", implemented: false },
-  { key: "terminal", label: "Terminal", implemented: false },
+  { key: "terminal", label: "Terminal", implemented: true },
   { key: "logs", label: "Logs", implemented: false },
   { key: "settings", label: "Settings", implemented: false },
 ];

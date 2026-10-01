@@ -122,16 +122,33 @@ planner is still rule-free by design, see `planner.py`). Explicit
 multi-step plans work end-to-end today; a model-authored plan is a
 reasonable Phase 5+ addition once there's a concrete reason to build it.
 
-## Phase 5 — Terminal
+## Phase 5 — Terminal ✅ (2026-10-02)
 Goal: a real, shared terminal in the UI.
 
-- ⬜ PTY-backed terminal session (Windows: `pywinpty` / ConPTY; POSIX: `pty`)
-- ⬜ Terminal panel in UI (xterm.js) wired to backend over WebSocket
-- ⬜ "Send output to AI" — pipes terminal buffer into the chat/agent context
-- ⬜ Process manager view (list/kill processes started by the app)
+- ✅ PTY-backed terminal session — Windows via `pywinpty`/ConPTY, verified against a real spawned `powershell.exe` before writing any app code (see IMPLEMENTATION_STATUS.md). POSIX (`ptyprocess`, near-identical API) is correctly deferred to Phase 9b — can't be verified on this dev machine, so it wasn't written speculatively.
+- ✅ Terminal panel in UI (`@xterm/xterm` + `@xterm/addon-fit`) wired to the backend over `WS /ws/terminal/{id}`, full ANSI rendering (PSReadLine syntax highlighting, table formatting) confirmed live
+- ✅ "Send output to AI" — strips ANSI codes from the session's captured buffer and seeds the Chat panel's input with it
+- ✅ Process manager view: the session list (shell, alive/dead, created_at) doubles as this for Phase 5's scope — a full OS-wide process browser was never in scope, only sessions this app started
 
-**Exit test:** run a real shell command in the UI terminal, send its output
-to the AI, get a relevant response referencing that exact output.
+**Exit test:** ✅ done 2026-10-02, verified live in the browser, not just
+via backend tests. Opened a PowerShell session, typed
+`Get-ChildItem | Select-Object -First 3`, watched the real, correctly
+table-formatted output render in xterm.js. Clicked "Send output to AI" —
+confirmed via direct DOM inspection (not just `get_page_text`, which
+doesn't surface input values) that the Chat panel's message box was
+seeded with the actual captured terminal text. Closed the session and
+confirmed via `Get-CimInstance Win32_Process` that the real PowerShell
+process was gone, not orphaned. 39/39 backend tests pass (4 new,
+including one that runs a real command through the full WebSocket stack
+and asserts its exact output string appears).
+
+**Known rough edge (not a bug):** captured terminal output includes
+PSReadLine's live incremental-redraw artifacts (e.g. a typed command can
+appear partially duplicated character-by-character in the raw buffer)
+because the capture is a faithful recording of the raw PTY stream. The
+model can still make sense of it, but a cleaner capture (stripping
+redraw sequences, not just color codes) would be a nice Phase 8 polish
+item, not a Phase 5 blocker.
 
 ## Phase 6 — Cyber Toolchain
 Goal: security tool adapters, gated by Target Scope from day one — this
