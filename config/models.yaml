@@ -1,0 +1,72 @@
+# CiciByte AI — Model Registry
+# See docs/MODELS.md for schema and category semantics.
+#
+# `path`         — where the GGUF is expected if you load it manually.
+# `ollama_tag`   — the tag to pull/run via Ollama (`ollama pull <tag>`).
+#                  null means no confirmed official tag: either pull it
+#                  yourself with `ollama pull hf.co/<repo>` (GGUF from
+#                  Hugging Face) and set this field, or drop a GGUF at
+#                  `path` and run it via the llama.cpp provider (later).
+# `installed`    — computed at request time: true if EITHER the local path
+#                  exists OR `ollama_tag` shows up in a live `ollama list`.
+
+models:
+  - name: Qwen3-Coder
+    category: CODING
+    provider: ollama
+    type: coding
+    format: GGUF
+    context: 256000
+    capabilities: [coding, agent, reasoning, tool-use]
+    min_vram_gb: 8
+    path: models/CODING/qwen3-coder.gguf
+    ollama_tag: qwen3-coder:30b   # verify against `ollama list` / ollama.com/library before relying on this
+    default: true
+
+  - name: Dolphin 3 24B
+    category: UNCENSORED
+    provider: ollama
+    type: general
+    format: GGUF
+    context: 32768
+    capabilities: [general, agent]
+    min_vram_gb: 16
+    path: models/UNCENSORED/dolphin3-24b.gguf
+    ollama_tag: null   # no confirmed official Ollama tag at this size — pull a GGUF manually (see note above)
+    default: false
+
+  - name: Dolphin 3 8B
+    category: GENERAL
+    provider: ollama
+    type: general
+    format: GGUF
+    context: 32768
+    capabilities: [general]
+    min_vram_gb: 6
+    path: models/GENERAL/dolphin3-8b.gguf
+    ollama_tag: dolphin3:8b
+    default: false
+
+  - name: DeepSeek-R1
+    category: REASONING
+    provider: ollama
+    type: reasoning
+    format: GGUF
+    context: 65536
+    capabilities: [reasoning, agent]
+    min_vram_gb: 12
+    path: models/REASONING/deepseek-r1.gguf
+    ollama_tag: deepseek-r1:7b
+    default: false
+
+  - name: Qwen Abliterated
+    category: EXPERIMENTAL
+    provider: ollama
+    type: experimental
+    format: GGUF
+    context: 32768
+    capabilities: [general, experimental]
+    min_vram_gb: 8
+    path: models/EXPERIMENTAL/qwen-abliterated.gguf
+    ollama_tag: null   # community/abliterated fine-tunes are usually HF-only GGUFs, not in the official Ollama library
+    default: false

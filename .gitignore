@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Runtime data (local-only, not portable via git)
+models/**/*.gguf
+logs/*
+!logs/.gitkeep
+workspace/*
+!workspace/.gitkeep
+projects/*
+!projects/.gitkeep
+*.db
+*.sqlite3
+
+# Secrets (Phase 10 secret store)
+.env
+.env.*
+secrets/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/

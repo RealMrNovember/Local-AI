@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cici-bg: #0a0e0d;
+  --color-cici-panel: #111615;
+  --color-cici-border: #1f2a27;
+  --color-cici-green: #22c55e;
+  --color-cici-blue: #1e3a5f;
+  --color-cici-text: #d4dbd8;
+  --color-cici-muted: #6b7a75;
+}
+
+body {
+  background-color: var(--color-cici-bg);
+  color: var(--color-cici-text);
+  font-family: ui-monospace, "Cascadia Code", "Fira Code", Consolas, monospace;
+}

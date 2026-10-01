@@ -1,0 +1,38 @@
+# CiciByte AI — Default configuration
+# Override any value via environment variable CICIBYTE__<SECTION>__<KEY>
+# (double underscore separated, case-insensitive), e.g.
+# CICIBYTE__SERVER__PORT=9000
+
+app:
+  name: CiciByte AI
+  version: "0.1.0-phase1"
+
+server:
+  host: 127.0.0.1
+  port: 8765
+
+network:
+  mode: offline    # offline | lan | internet
+  # "offline" blocks any outbound call (incl. Ollama model pulls) at the API
+  # layer, not just by convention — see app/routers/models.py. Switch to
+  # "internet" from the UI (Settings, Phase 8) or PUT /api/network/mode when
+  # a new model genuinely needs to be downloaded.
+
+models:
+  ollama_host: http://127.0.0.1:11434
+  request_timeout_s: 180
+
+paths:
+  logs: logs
+  workspace: workspace
+  projects: projects
+  models_dir: models
+  models_registry: config/models.yaml
+
+logging:
+  level: INFO
+  json_file: true
+  console: true
+
+autonomy:
+  default_mode: SAFE   # SAFE | AUTO | FULL
